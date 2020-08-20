@@ -1,23 +1,29 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 func main() {
 	even := make(chan int)
 	odd := make(chan int)
-	quit := make(chan bool)
+	fanin := make(chan int )
 
 	// send
-	go send(even, odd, quit)
+	go send(even, odd)
 
 	// receive
-	receive(even, odd, quit)
+	go receive(even, odd, fanin)
 
+	for v := range fanin {
+		fmt.Println(v)
+	}
 	fmt.Println("About to exit")
 }
 
-func send(even, odd chan <- int, quit chan <- bool) {
-	for i := 0; i < 100; i++ {
+func send(even, odd chan <- int) {
+	for i := 0; i < 10; i++ {
 		if i % 2 == 0 {
 			even <- i
 		} else {
@@ -25,23 +31,28 @@ func send(even, odd chan <- int, quit chan <- bool) {
 		}
 	}
 
-	close(quit)
+	close(even)
+	close(odd)
 }
 
-func receive (even, odd <- chan int, quit <- chan bool) {
-	for {
-		select {
-		case value := <-even:
-			fmt.Println("From the even channel:", value)
-		case value := <-odd:
-			fmt.Println("From the odd channel:", value)
-		case value, ok := <-quit:
-			if !ok {
-				fmt.Println("From comma ok", value, ok)
-				return
-			} else {
-				fmt.Println("From comma ok", value)
-			}
+func receive (even, odd <- chan int, fanin chan <- int) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		for v := range even {
+			fanin <- v
 		}
-	}
+		wg.Done()
+	}()
+
+	go func() {
+		for v := range odd {
+			fanin <- v
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
+	close(fanin)
 }
